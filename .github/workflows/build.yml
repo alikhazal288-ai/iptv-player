@@ -45,7 +45,7 @@ jobs:
           sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|&\n<category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' $M
           mkdir -p ~/.gradle && printf '%s\n' 'allprojects {' '  afterEvaluate { p ->' '    if (p.hasProperty("android")) { p.android.compileSdkVersion 36 }' '  }' '}' > ~/.gradle/init.gradle
           flutter pub get
-          flutter build apk --release
+          flutter build apk --release --no-shrink
       - uses: actions/upload-artifact@v4
         with:
           name: iptv-apk
