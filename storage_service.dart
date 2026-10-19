@@ -1,32 +1,62 @@
-import 'dart:convert';
-import 'package:shared_preferences/shared_preferences.dart';
-import '../models/models.dart';
-
-class StorageService {
-  static Future<void> saveCredentials(Credentials c) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString('creds', json.encode({
-      'kind': c.kind.index, 'server': c.server, 'user': c.username,
-      'pass': c.password, 'm3u': c.m3uSource, 'mac': c.mac,
-    }));
-  }
-
-  static Future<Credentials?> loadCredentials() async {
-    final p = await SharedPreferences.getInstance();
-    final s = p.getString('creds');
-    if (s == null) return null;
-    final m = json.decode(s);
-    return Credentials(
-      kind: LoginKind.values[m['kind']],
-      server: m['server'], username: m['user'], password: m['pass'], m3uSource: m['m3u'], mac: m['mac'] ?? '',
-    );
-  }
-
-  static Future<void> clear() async => (await SharedPreferences.getInstance()).clear();
-
-  static Future<Set<String>> loadFavorites() async =>
-      ((await SharedPreferences.getInstance()).getStringList('favs') ?? []).toSet();
-
-  static Future<void> saveFavorites(Set<String> f) async =>
-      (await SharedPreferences.getInstance()).setStringList('favs', f.toList());
-}
+name: Build APK
+on: workflow_dispatch
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Arrange files
+        run: |
+          mkdir -p app/lib/models app/lib/services app/lib/providers app/lib/screens
+          cp main.dart app/lib/
+          cp models.dart app/lib/models/
+          cp m3u_parser.dart stalker_service.dart storage_service.dart xtream_api_service.dart app/lib/services/
+          cp app_providers.dart app/lib/providers/
+          cp home_screen.dart login_screen.dart player_screen.dart app/lib/screens/
+          cat > app/pubspec.yaml <<'EOF'
+          name: iptv_player
+          description: IPTV player
+          version: 1.0.0+1
+          environment:
+            sdk: ">=3.3.0 <4.0.0"
+          dependencies:
+            flutter:
+              sdk: flutter
+            flutter_riverpod: ^2.5.1
+            shared_preferences: ^2.2.3
+            http: ^1.2.1
+            file_picker: ^8.0.0
+            media_kit: ^1.1.10
+            media_kit_video: ^1.2.4
+            media_kit_libs_video: ^1.0.4
+          flutter:
+            uses-material-design: true
+          EOF
+      - name: Build
+        working-directory: app
+        run: |
+          flutter create --platforms=android --project-name iptv_player .
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n<application android:usesCleartextTraffic="true"|' $M
+          sed -i 's|<category android:name="android.intent.category.LAUNCHER"/>|&\n<category android:name="android.intent.category.LEANBACK_LAUNCHER"/>|' $M
+          mkdir -p ~/.gradle
+          cat > ~/.gradle/init.gradle <<'EOF'
+          allprojects {
+            afterEvaluate { p ->
+              if (p.hasProperty("android")) { p.android.compileSdkVersion 36 }
+            }
+          }
+          EOF
+          flutter pub get
+          flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: iptv-apk
+          path: app/build/app/outputs/flutter-apk/app-release.apk
